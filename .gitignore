@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Node (if a build step gets added later)
+node_modules/
+dist/
+build/
+*.log
+npm-debug.log*
+.env
+.env.local
+
+# Packaged extension
+*.zip
+*.crx
+*.pem
+
+# Local notes and config — not for the repo
+PLAN.md
+CLAUDE.md
