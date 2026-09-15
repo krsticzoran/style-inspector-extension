@@ -2,7 +2,8 @@
 // This file is automatically injected into EVERY page you visit (because of "matches": ["<all_urls>"] in the manifest)
 
 let tooltip = null;
-let enabled = true; // later you can add a toggle via the popup
+// Off by default: the inspector stays out of the way until Alt+S turns it on.
+let enabled = false;
 
 // Create the tooltip element once and keep it hidden until needed
 function createTooltip() {
