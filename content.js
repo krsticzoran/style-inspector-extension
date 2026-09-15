@@ -84,10 +84,16 @@ document.addEventListener("mousemove", (e) => {
 
 document.addEventListener("mouseleave", hideTooltip);
 
-// Alt+S to toggle the inspector on/off on the fly
+// Alt+S (Option+S on macOS) to toggle the inspector on/off on the fly.
+// Match on e.code, the physical key, instead of e.key: on macOS, holding Option
+// changes the character produced, so Option+S reports e.key === "ß", never "s".
 document.addEventListener("keydown", (e) => {
-  if (e.altKey && e.key.toLowerCase() === "s") {
-    enabled = !enabled;
-    if (!enabled) hideTooltip();
-  }
+  if (!e.altKey || e.ctrlKey || e.metaKey) return;
+  if (e.code !== "KeyS") return;
+
+  // Without this, Option+S types "ß" into whatever field has focus.
+  e.preventDefault();
+
+  enabled = !enabled;
+  if (!enabled) hideTooltip();
 });
