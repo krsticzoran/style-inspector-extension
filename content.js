@@ -13,17 +13,25 @@ const CURSOR_OFFSET = 16;
 
 // The rows the tooltip is made of, in display order. Built once in createTooltip(),
 // then updated in place — no innerHTML rebuilds while the mouse moves.
+//
+// Each row describes itself completely, so adding a property to the tooltip is one
+// line here and nothing anywhere else:
+//   label   what the left column says
+//   get     how the raw value is read, from the computed style and the element
+//   format  optional, how that raw value is turned into what the user reads
+//   swatch  optional, whether the row gets a colour square (which uses the raw value,
+//           not the formatted one, since the browser is the one painting it)
 const ROWS = [
-  { key: "font", label: "font" },
-  { key: "size", label: "size" },
-  { key: "lineHeight", label: "line-height" },
-  { key: "letterSpacing", label: "letter-spacing" },
-  { key: "color", label: "color", swatch: true },
-  { key: "background", label: "bg", swatch: true },
+  { label: "font",           get: (s) => s.fontFamily },
+  { label: "size",           get: (s) => `${s.fontSize} / weight ${s.fontWeight}` },
+  { label: "line-height",    get: (s) => s.lineHeight },
+  { label: "letter-spacing", get: (s) => s.letterSpacing },
+  { label: "color",          get: (s) => s.color,           format: formatColor, swatch: true },
+  { label: "bg",             get: (s) => s.backgroundColor, format: formatColor, swatch: true },
 ];
 
 let tooltip = null; // the container element, created lazily on first use
-let fields = null; // { [key]: { value: <span>, swatch: <span>|null } }
+let fields = null; // one { value, swatch } per ROWS entry, same order
 
 let visible = false; // whether the tooltip is currently shown
 let shownTarget = null; // the element the tooltip is currently describing
@@ -43,9 +51,9 @@ const IGNORED_TAGS = new Set(["HTML", "BODY", "SCRIPT", "STYLE"]);
 function createTooltip() {
   tooltip = document.createElement("div");
   tooltip.id = "style-inspector-tooltip";
-  fields = {};
+  fields = [];
 
-  for (const { key, label, swatch } of ROWS) {
+  for (const { label, swatch } of ROWS) {
     const row = document.createElement("div");
     row.className = "si-row";
 
@@ -65,7 +73,7 @@ function createTooltip() {
     row.appendChild(valueEl);
 
     tooltip.appendChild(row);
-    fields[key] = { value: valueEl, swatch: swatchEl };
+    fields.push({ value: valueEl, swatch: swatchEl });
   }
 
   document.body.appendChild(tooltip);
@@ -96,16 +104,13 @@ function formatColor(value) {
 function updateContent(target) {
   const style = window.getComputedStyle(target);
 
-  fields.font.value.textContent = style.fontFamily;
-  fields.size.value.textContent = `${style.fontSize} / weight ${style.fontWeight}`;
-  fields.lineHeight.value.textContent = style.lineHeight;
-  fields.letterSpacing.value.textContent = style.letterSpacing;
+  ROWS.forEach((row, i) => {
+    const field = fields[i];
+    const raw = row.get(style, target);
 
-  fields.color.value.textContent = formatColor(style.color);
-  fields.color.swatch.style.background = style.color;
-
-  fields.background.value.textContent = formatColor(style.backgroundColor);
-  fields.background.swatch.style.background = style.backgroundColor;
+    field.value.textContent = row.format ? row.format(raw) : raw;
+    if (field.swatch) field.swatch.style.background = raw;
+  });
 }
 
 // The cheap half: two style writes, safe to run on every frame.
