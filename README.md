@@ -45,4 +45,5 @@ pressed once when you are done inspecting and once when you start again.
 
 ## Tech
 
-Manifest V3, one content script, no permissions, no dependencies, no build step.
+Manifest V3, one content script, a single permission (`storage`, to remember the on/off
+switch), no dependencies, no build step.
