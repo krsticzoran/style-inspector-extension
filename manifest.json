@@ -3,7 +3,7 @@
   "name": "Style Inspector",
   "version": "1.0",
   "description": "Hover preko teksta i vidi font, veličinu, boju i ostale stilove.",
-  "permissions": [],
+  "permissions": ["storage"],
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

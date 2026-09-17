@@ -36,11 +36,12 @@ already open.
 
 ## Usage
 
-The inspector starts **off**, so it never gets in the way of normal browsing.
+Hover over any text and the tooltip appears next to the cursor with that element's
+computed styles.
 
-Press `Alt + S` (`Option + S` on macOS) to turn it on, then hover over any text and the
-tooltip appears next to the cursor with that element's computed styles. The same shortcut
-turns it back off.
+`Alt + S` (`Option + S` on macOS) turns the inspector off and on. The switch is
+remembered: it applies to every tab at once and survives reloads and restarts, so it is
+pressed once when you are done inspecting and once when you start again.
 
 ## Tech
 

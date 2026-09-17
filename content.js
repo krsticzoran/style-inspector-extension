@@ -1,8 +1,14 @@
 // Style Inspector - content script
 // This file is automatically injected into EVERY page you visit (because of "matches": ["<all_urls>"] in the manifest)
 
-// Off by default: the inspector stays out of the way until Alt+S turns it on.
+// Not the default — a fail-safe. The stored value is read at the bottom of this file,
+// and that read is asynchronous, so every page load has a brief moment before it lands.
+// Staying off during that moment is what stops the tooltip from flashing on every page
+// while the inspector is switched off. The actual default lives in that read.
 let enabled = false;
+
+// Where the on/off state lives, shared by every tab and kept across restarts.
+const STORAGE_KEY = "enabled";
 
 // How long the pointer has to rest on an element before the tooltip appears.
 // Short enough to feel instant, long enough that sweeping across a page shows nothing.
@@ -207,6 +213,23 @@ document.addEventListener("keydown", (e) => {
   // Without this, Option+S types "ß" into whatever field has focus.
   e.preventDefault();
 
-  enabled = !enabled;
+  // Write only. The storage listener below is what actually flips `enabled`,
+  // here and in every other open tab, so there is one path into the state.
+  chrome.storage.local.set({ [STORAGE_KEY]: !enabled });
+});
+
+// Pick up the stored state on load. The fallback here is the real default, and it only
+// ever applies on a fresh profile: once the shortcut has been pressed even once, the
+// stored value wins from then on.
+chrome.storage.local.get({ [STORAGE_KEY]: true }, (stored) => {
+  enabled = stored[STORAGE_KEY];
+});
+
+// Toggling in one tab has to reach all the others, otherwise every tab keeps its own
+// stale copy of the state and the shortcut stops being predictable.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local" || !changes[STORAGE_KEY]) return;
+
+  enabled = changes[STORAGE_KEY].newValue;
   if (!enabled) hideTooltip();
 });
