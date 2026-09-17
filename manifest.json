@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Style Inspector",
   "version": "1.0",
-  "description": "Hover preko teksta i vidi font, veličinu, boju i ostale stilove.",
+  "description": "Shows the computed text styles of the element under the cursor in a tooltip that follows the mouse.",
   "permissions": ["storage"],
   "content_scripts": [
     {
