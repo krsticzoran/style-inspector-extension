@@ -36,6 +36,56 @@ const ROWS = [
   { label: "bg",             get: (s) => s.backgroundColor, format: formatColor, swatch: true },
 ];
 
+// The tooltip's styles. They live here rather than in a manifest stylesheet because a
+// manifest stylesheet applies to the page, and the tooltip lives in a shadow root the
+// page's CSS cannot reach — which also means nothing from outside can reach it either.
+const TOOLTIP_CSS = `
+  /* Inherited properties (font, color, line-height) still flow into a shadow root through
+     its host, so reset everything at the boundary and start from a clean slate. */
+  :host {
+    all: initial;
+  }
+
+  .tooltip {
+    position: fixed;
+    z-index: 2147483647; /* max possible z-index, so it's always on top */
+    display: none;
+    box-sizing: content-box;
+    background: #1e1e1e;
+    color: #eee;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    line-height: 1.5;
+    padding: 8px 10px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    pointer-events: none; /* so the tooltip doesn't "steal" mouseover events */
+    max-width: 280px;
+  }
+
+  .row {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .label {
+    color: #9aa0a6;
+    display: inline-block;
+    width: 90px;
+  }
+
+  .swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+`;
+
 let tooltip = null; // the container element, created lazily on first use
 let fields = null; // one { value, swatch } per ROWS entry, same order
 
@@ -53,25 +103,34 @@ let height = 0;
 // Elements we ignore (showing styles for them makes no sense)
 const IGNORED_TAGS = new Set(["HTML", "BODY", "SCRIPT", "STYLE"]);
 
-// Create the tooltip element once and keep it hidden until needed
+// Create the tooltip element once and keep it hidden until needed.
+// It is built inside a shadow root, so the page's stylesheet cannot distort it.
 function createTooltip() {
+  // A custom tag name rather than a div, so page rules aimed at `div` miss the host too.
+  const host = document.createElement("style-inspector");
+  const shadow = host.attachShadow({ mode: "open" });
+
+  const style = document.createElement("style");
+  style.textContent = TOOLTIP_CSS;
+  shadow.appendChild(style);
+
   tooltip = document.createElement("div");
-  tooltip.id = "style-inspector-tooltip";
+  tooltip.className = "tooltip";
   fields = [];
 
   for (const { label, swatch } of ROWS) {
     const row = document.createElement("div");
-    row.className = "si-row";
+    row.className = "row";
 
     const labelEl = document.createElement("span");
-    labelEl.className = "si-label";
+    labelEl.className = "label";
     labelEl.textContent = label;
     row.appendChild(labelEl);
 
     let swatchEl = null;
     if (swatch) {
       swatchEl = document.createElement("span");
-      swatchEl.className = "si-swatch";
+      swatchEl.className = "swatch";
       row.appendChild(swatchEl);
     }
 
@@ -82,7 +141,8 @@ function createTooltip() {
     fields.push({ value: valueEl, swatch: swatchEl });
   }
 
-  document.body.appendChild(tooltip);
+  shadow.appendChild(tooltip);
+  document.body.appendChild(host);
 }
 
 // getComputedStyle always reports colours as rgb()/rgba(). Hex is shorter and is what
