@@ -263,6 +263,13 @@ document.addEventListener("mousemove", (e) => {
 
 document.addEventListener("mouseleave", hideTooltip);
 
+// Scrolling fires no mousemove, so a page moving under a parked cursor would leave the
+// tooltip describing an element that is no longer there. Hiding is the cheap answer: it
+// never shows anything wrong, at the price of needing a mouse move to come back.
+// Capture, because scrolling happens in whichever container has the scrollbar, and
+// scroll events from those do not bubble to the document.
+document.addEventListener("scroll", hideTooltip, { capture: true, passive: true });
+
 // Pick up the stored state on load. The fallback here is the real default, and it only
 // ever applies on a fresh profile: once the shortcut has been pressed even once, the
 // stored value wins from then on. background.js reads the same default, so keep the two
