@@ -263,30 +263,17 @@ document.addEventListener("mousemove", (e) => {
 
 document.addEventListener("mouseleave", hideTooltip);
 
-// Alt+S (Option+S on macOS) to toggle the inspector on/off on the fly.
-// Match on e.code, the physical key, instead of e.key: on macOS, holding Option
-// changes the character produced, so Option+S reports e.key === "ß", never "s".
-document.addEventListener("keydown", (e) => {
-  if (!e.altKey || e.ctrlKey || e.metaKey) return;
-  if (e.code !== "KeyS") return;
-
-  // Without this, Option+S types "ß" into whatever field has focus.
-  e.preventDefault();
-
-  // Write only. The storage listener below is what actually flips `enabled`,
-  // here and in every other open tab, so there is one path into the state.
-  chrome.storage.local.set({ [STORAGE_KEY]: !enabled });
-});
-
 // Pick up the stored state on load. The fallback here is the real default, and it only
 // ever applies on a fresh profile: once the shortcut has been pressed even once, the
-// stored value wins from then on.
+// stored value wins from then on. background.js reads the same default, so keep the two
+// in sync.
 chrome.storage.local.get({ [STORAGE_KEY]: true }, (stored) => {
   enabled = stored[STORAGE_KEY];
 });
 
-// Toggling in one tab has to reach all the others, otherwise every tab keeps its own
-// stale copy of the state and the shortcut stops being predictable.
+// The only path into the state. The toggle shortcut is handled in background.js, which
+// just writes to storage; this listener then flips the inspector here and in every other
+// open tab, so no tab keeps a stale copy of its own.
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "local" || !changes[STORAGE_KEY]) return;
 

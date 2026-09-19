@@ -43,7 +43,12 @@ computed styles.
 remembered: it applies to every tab at once and survives reloads and restarts, so it is
 pressed once when you are done inspecting and once when you start again.
 
+The shortcut can be changed at `chrome://extensions/shortcuts`. Chrome only assigns
+`Alt + S` if nothing else already uses it; if the inspector does not react, set the
+shortcut there by hand.
+
 ## Tech
 
-Manifest V3, one content script, a single permission (`storage`, to remember the on/off
-switch), no dependencies, no build step.
+Manifest V3, one content script plus a background service worker for the shortcut, a
+single permission (`storage`, to remember the on/off switch), no dependencies, no build
+step.
