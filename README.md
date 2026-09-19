@@ -2,7 +2,8 @@
 
 A small Chrome extension that shows the computed styles of whatever element is under the
 cursor — font family, size, weight, line-height, letter-spacing, text color and
-background color — in a tooltip that follows the mouse.
+background color — in a tooltip that follows the mouse. Colors are shown as hex, which is
+what you want when pasting a value into a stylesheet or a design tool.
 
 ## Why this exists
 
@@ -36,8 +37,12 @@ already open.
 
 ## Usage
 
-Hover over any text and the tooltip appears next to the cursor with that element's
-computed styles.
+Rest the pointer on any text and the tooltip appears next to the cursor with that
+element's computed styles. It waits for the pointer to settle first, so sweeping across a
+page shows nothing — what gets inspected is the element you stop on.
+
+Content inside an iframe (an embedded video, a CodePen) is not inspected. That is a
+deliberate limit: a tooltip drawn inside a frame would be clipped at its edges.
 
 `Alt + S` (`Option + S` on macOS) turns the inspector off and on. The switch is
 remembered: it applies to every tab at once and survives reloads and restarts, so it is
@@ -52,6 +57,7 @@ shortcut there by hand.
 
 ## Tech
 
-Manifest V3, one content script plus a background service worker for the shortcut, a
-single permission (`storage`, to remember the on/off switch), no dependencies, no build
-step.
+Manifest V3: one content script, a background service worker for the shortcut, and a
+popup for the toolbar switch. The tooltip lives in a shadow root, so a page's own CSS
+cannot distort it. A single permission (`storage`, to remember the on/off switch), no
+dependencies, no build step.
