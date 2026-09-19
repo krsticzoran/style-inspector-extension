@@ -43,6 +43,9 @@ computed styles.
 remembered: it applies to every tab at once and survives reloads and restarts, so it is
 pressed once when you are done inspecting and once when you start again.
 
+Clicking the toolbar icon opens a small panel with the same switch, which also shows the
+current shortcut. While the inspector is off, the icon carries an **off** badge.
+
 The shortcut can be changed at `chrome://extensions/shortcuts`. Chrome only assigns
 `Alt + S` if nothing else already uses it; if the inspector does not react, set the
 shortcut there by hand.

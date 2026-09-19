@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      /* Deliberately the tooltip's own palette, so the popup reads as the same tool. */
+      body {
+        margin: 0;
+        padding: 14px 16px;
+        width: 190px;
+        background: #1e1e1e;
+        color: #eee;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 13px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      /* A checkbox styled as a switch: the input stays a real checkbox, so it keeps
+         keyboard focus and the space bar for free. */
+      .switch input {
+        position: absolute;
+        opacity: 0;
+      }
+
+      .switch {
+        display: inline-block;
+        cursor: pointer;
+      }
+
+      .track {
+        display: block;
+        width: 36px;
+        height: 20px;
+        border-radius: 10px;
+        background: #4a4d52;
+        transition: background 0.15s;
+      }
+
+      .knob {
+        display: block;
+        width: 16px;
+        height: 16px;
+        margin: 2px;
+        border-radius: 50%;
+        background: #eee;
+        transition: transform 0.15s;
+      }
+
+      .switch input:checked + .track {
+        background: #4f9dff;
+      }
+
+      .switch input:checked + .track .knob {
+        transform: translateX(16px);
+      }
+
+      .switch input:focus-visible + .track {
+        outline: 2px solid #4f9dff;
+        outline-offset: 2px;
+      }
+
+      .hint {
+        margin-top: 12px;
+        color: #9aa0a6;
+        font-size: 11px;
+        line-height: 1.5;
+      }
+
+      kbd {
+        font: inherit;
+        color: #eee;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <span id="state">Inspector off</span>
+      <label class="switch">
+        <input type="checkbox" id="toggle" />
+        <span class="track"><span class="knob"></span></span>
+      </label>
+    </div>
+
+    <p class="hint">Or press <kbd id="shortcut">the shortcut</kbd> on any page.</p>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
