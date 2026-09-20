@@ -104,6 +104,29 @@ let height = 0;
 // Elements we ignore (showing styles for them makes no sense)
 const IGNORED_TAGS = new Set(["HTML", "BODY", "SCRIPT", "STYLE"]);
 
+// Form controls render text the rows describe, but that text is a value or a placeholder
+// rather than a child node, so hasOwnText() cannot see it.
+const TEXT_CONTROLS = new Set(["INPUT", "SELECT"]);
+
+// Every row currently describes text, so an element with no text of its own — a layout
+// div, a wrapper, an image — has nothing to show, and the tooltip stays away.
+//
+// "Of its own" is what makes this work: in <div><p>Hi</p></div> the text belongs to the p,
+// so the div is skipped and the p is not. It also catches the common case of text dropped
+// straight into a div, which is a text element whatever its tag says.
+//
+// This is the same question item 12 asks — text element or container — so whatever
+// replaces it there should replace this too.
+function hasOwnText(el) {
+  if (TEXT_CONTROLS.has(el.tagName)) return true;
+
+  for (const node of el.childNodes) {
+    if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) return true;
+  }
+
+  return false;
+}
+
 // Create the tooltip element once and keep it hidden until needed.
 // It is built inside a shadow root, so the page's stylesheet cannot distort it.
 function createTooltip() {
@@ -246,7 +269,7 @@ document.addEventListener("mousemove", (e) => {
   pointerY = e.clientY;
 
   const target = e.target;
-  if (!target || IGNORED_TAGS.has(target.tagName)) {
+  if (!target || IGNORED_TAGS.has(target.tagName) || !hasOwnText(target)) {
     hideTooltip();
     return;
   }
