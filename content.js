@@ -28,6 +28,7 @@ const CURSOR_OFFSET = 16;
 //   swatch  optional, whether the row gets a colour square (which uses the raw value,
 //           not the formatted one, since the browser is the one painting it)
 const ROWS = [
+  { label: "element",        get: (s, el) => el.tagName.toLowerCase() },
   { label: "font",           get: (s) => s.fontFamily },
   { label: "size",           get: (s) => `${s.fontSize} / weight ${s.fontWeight}` },
   { label: "line-height",    get: (s) => s.lineHeight },
