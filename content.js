@@ -27,15 +27,28 @@ const CURSOR_OFFSET = 16;
 //   format  optional, how that raw value is turned into what the user reads
 //   swatch  optional, whether the row gets a colour square (which uses the raw value,
 //           not the formatted one, since the browser is the one painting it)
+//   css     optional, the real CSS properties this row stands for, used when copying.
+//           A row can cover more than one (size is font-size plus font-weight), and a row
+//           that describes the element rather than a style has none, so it is not copied.
 const ROWS = [
   { label: "element",        get: (s, el) => el.tagName.toLowerCase() },
-  { label: "font",           get: (s) => s.fontFamily },
-  { label: "size",           get: (s) => `${s.fontSize} / weight ${s.fontWeight}` },
-  { label: "line-height",    get: (s) => s.lineHeight },
-  { label: "letter-spacing", get: (s) => s.letterSpacing },
-  { label: "color",          get: (s) => s.color,           format: formatColor, swatch: true },
-  { label: "bg",             get: (s) => s.backgroundColor, format: formatColor, swatch: true },
+  { label: "font",           get: (s) => s.fontFamily,      css: ["font-family"] },
+  { label: "size",           get: (s) => `${s.fontSize} / weight ${s.fontWeight}`,
+                                                            css: ["font-size", "font-weight"] },
+  { label: "line-height",    get: (s) => s.lineHeight,      css: ["line-height"] },
+  { label: "letter-spacing", get: (s) => s.letterSpacing,   css: ["letter-spacing"] },
+  { label: "color",          get: (s) => s.color,           format: formatColor, swatch: true,
+                                                            css: ["color"] },
+  { label: "bg",             get: (s) => s.backgroundColor, format: formatColor, swatch: true,
+                                                            css: ["background-color"] },
 ];
+
+// Alt+C copies what the tooltip is showing. Handled here rather than through the commands
+// API, which fires in the service worker and has no idea where the pointer is.
+const COPY_KEY = "KeyC";
+
+// How long the "copied" confirmation stays up.
+const COPIED_DELAY = 1200;
 
 // The tooltip's styles. They live here rather than in a manifest stylesheet because a
 // manifest stylesheet applies to the page, and the tooltip lives in a shadow root the
@@ -76,6 +89,14 @@ const TOOLTIP_CSS = `
     width: 90px;
   }
 
+  /* The copy confirmation. Hidden by default so it takes up no space, and no layout
+     shift when it appears: it replaces nothing and is the last line. */
+  .note {
+    display: none;
+    margin-top: 4px;
+    color: #4f9dff;
+  }
+
   .swatch {
     display: inline-block;
     width: 10px;
@@ -89,6 +110,8 @@ const TOOLTIP_CSS = `
 
 let tooltip = null; // the container element, created lazily on first use
 let fields = null; // one { value, swatch } per ROWS entry, same order
+let note = null; // the "copied" line, empty and hidden unless something was just copied
+let noteTimer = null; // how long that line stays up
 
 let visible = false; // whether the tooltip is currently shown
 let shownTarget = null; // the element the tooltip is currently describing
@@ -165,6 +188,10 @@ function createTooltip() {
     fields.push({ value: valueEl, swatch: swatchEl });
   }
 
+  note = document.createElement("div");
+  note.className = "note";
+  tooltip.appendChild(note);
+
   shadow.appendChild(tooltip);
   document.body.appendChild(host);
 }
@@ -203,6 +230,40 @@ function updateContent(target) {
   });
 }
 
+// Build the CSS block that gets copied. Driven by the same ROWS array the tooltip is, so
+// whatever is on screen is what lands on the clipboard, and neither can drift from the
+// other. Colours go in as hex, for the same reason the tooltip shows them that way.
+function buildCss(target) {
+  const style = window.getComputedStyle(target);
+  const lines = [];
+
+  for (const row of ROWS) {
+    if (!row.css) continue;
+
+    for (const property of row.css) {
+      const raw = style.getPropertyValue(property);
+      lines.push(`${property}: ${row.format ? row.format(raw) : raw};`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+// A line under the rows, for confirming a copy. Clears itself, and the tooltip is measured
+// again because it just grew a line.
+function showNote(text) {
+  clearTimeout(noteTimer);
+  note.textContent = text;
+  note.style.display = "block";
+  measure();
+
+  noteTimer = setTimeout(() => {
+    note.textContent = "";
+    note.style.display = "none";
+    measure();
+  }, COPIED_DELAY);
+}
+
 // The cheap half: two style writes, safe to run on every frame.
 // Sits below-right of the cursor, and flips to the other side rather than leaving the screen.
 function position() {
@@ -237,6 +298,11 @@ function show() {
   if (restingTarget !== shownTarget) {
     shownTarget = restingTarget;
     updateContent(shownTarget);
+
+    // The confirmation belongs to the element it was copied from, not to this one.
+    clearTimeout(noteTimer);
+    note.textContent = "";
+    note.style.display = "none";
   }
 
   if (!visible) {
@@ -244,8 +310,14 @@ function show() {
     visible = true;
   }
 
-  // Measuring needs the final content and a laid-out element, so it happens here
-  // rather than on every frame.
+  measure();
+}
+
+// Reading the size forces a synchronous layout, so it happens only when the content
+// changed — never per frame, where position() does the cheap work instead.
+function measure() {
+  if (!visible) return;
+
   const rect = tooltip.getBoundingClientRect();
   width = rect.width;
   height = rect.height;
@@ -259,8 +331,35 @@ function hideTooltip() {
   restingTarget = null;
   shownTarget = null;
   visible = false;
+
+  clearTimeout(noteTimer);
+  if (note) {
+    note.textContent = "";
+    note.style.display = "none";
+  }
+
   if (tooltip) tooltip.style.display = "none";
 }
+
+// Alt+C copies the styles of the element the tooltip is describing. A key press is the
+// user gesture the clipboard API requires, so no permission is needed.
+// Match on e.code for the same reason item 1 did: on macOS, Option+C reports e.key "ç".
+document.addEventListener("keydown", async (e) => {
+  if (!enabled || !visible || !shownTarget) return;
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== COPY_KEY) return;
+
+  // Without this, Option+C types "ç" into whatever field has focus.
+  e.preventDefault();
+
+  try {
+    await navigator.clipboard.writeText(buildCss(shownTarget));
+    showNote("copied");
+  } catch {
+    // Chrome refuses the clipboard when the page is not focused — clicking the page once
+    // fixes it, so say what happened rather than failing silently.
+    showNote("copy failed");
+  }
+});
 
 document.addEventListener("mousemove", (e) => {
   if (!enabled) return;
