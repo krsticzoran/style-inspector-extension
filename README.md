@@ -48,7 +48,13 @@ deliberate limit: a tooltip drawn inside a frame would be clipped at its edges.
 remembered: it applies to every tab at once and survives reloads and restarts, so it is
 pressed once when you are done inspecting and once when you start again.
 
-With the tooltip up, `Alt + C` (`Option + C`) copies what it is showing as a CSS block,
+`Alt + D` (`Option + D`) cycles how much the tooltip shows: **compact** (tag, size, font),
+**default**, and **full** (adds text-transform, alignment, decoration, word-spacing,
+white-space and the element's size). The level flashes in the tooltip, applies to every
+tab, and is remembered across restarts.
+
+With the tooltip up, `Alt + C` (`Option + C`) copies what it is showing as a CSS block —
+so the level decides how much gets copied —
 ready to paste into a stylesheet. Colors are copied as hex, and the tooltip confirms with a
 short **copied** line. If it says **copy failed**, click the page once and try again —
 Chrome only allows the clipboard on a focused page.

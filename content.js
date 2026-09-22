@@ -17,8 +17,8 @@ const SHOW_DELAY = 100;
 // Distance between the cursor and the corner of the tooltip.
 const CURSOR_OFFSET = 16;
 
-// The rows the tooltip is made of, in display order. Built once in createTooltip(),
-// then updated in place — no innerHTML rebuilds while the mouse moves.
+// The rows the tooltip is made of, in display order. Built when the level changes, then
+// updated in place — no innerHTML rebuilds while the mouse moves.
 //
 // Each row describes itself completely, so adding a property to the tooltip is one
 // line here and nothing anywhere else:
@@ -30,22 +30,66 @@ const CURSOR_OFFSET = 16;
 //   css     optional, the real CSS properties this row stands for, used when copying.
 //           A row can cover more than one (size is font-size plus font-weight), and a row
 //           that describes the element rather than a style has none, so it is not copied.
-const ROWS = [
-  { label: "element",        get: (s, el) => el.tagName.toLowerCase() },
-  { label: "font",           get: (s) => s.fontFamily,      css: ["font-family"] },
-  { label: "size",           get: (s) => `${s.fontSize} / weight ${s.fontWeight}`,
-                                                            css: ["font-size", "font-weight"] },
-  { label: "line-height",    get: (s) => s.lineHeight,      css: ["line-height"] },
-  { label: "letter-spacing", get: (s) => s.letterSpacing,   css: ["letter-spacing"] },
-  { label: "color",          get: (s) => s.color,           format: formatColor, swatch: true,
-                                                            css: ["color"] },
-  { label: "bg",             get: (s) => s.backgroundColor, format: formatColor, swatch: true,
-                                                            css: ["background-color"] },
+// Every row the tooltip knows how to show, named so the levels below can list them
+// without repeating a definition.
+const ROW = {
+  element:       { label: "element",        get: (s, el) => el.tagName.toLowerCase() },
+  font:          { label: "font",           get: (s) => s.fontFamily,      css: ["font-family"] },
+  size:          { label: "size",           get: (s) => `${s.fontSize} / weight ${s.fontWeight}`,
+                                                                           css: ["font-size", "font-weight"] },
+  lineHeight:    { label: "line-height",    get: (s) => s.lineHeight,      css: ["line-height"] },
+  letterSpacing: { label: "letter-spacing", get: (s) => s.letterSpacing,   css: ["letter-spacing"] },
+  color:         { label: "color",          get: (s) => s.color,           format: formatColor, swatch: true,
+                                                                           css: ["color"] },
+  background:    { label: "bg",             get: (s) => s.backgroundColor, format: formatColor, swatch: true,
+                                                                           css: ["background-color"] },
+  textTransform: { label: "transform",      get: (s) => s.textTransform,   css: ["text-transform"] },
+  textAlign:     { label: "align",          get: (s) => s.textAlign,       css: ["text-align"] },
+  fontStyle:     { label: "style",          get: (s) => s.fontStyle,       css: ["font-style"] },
+  decoration:    { label: "decoration",     get: (s) => s.textDecorationLine,
+                                                                           css: ["text-decoration-line"] },
+  wordSpacing:   { label: "word-spacing",   get: (s) => s.wordSpacing,     css: ["word-spacing"] },
+  whiteSpace:    { label: "white-space",    get: (s) => s.whiteSpace,      css: ["white-space"] },
+  box:           { label: "box",            get: (s, el) => {
+                    const rect = el.getBoundingClientRect();
+                    return `${Math.round(rect.width)} × ${Math.round(rect.height)}`;
+                  } },
+};
+
+// How much the tooltip shows, cycled with Alt+D. Order matters: it is the cycle order,
+// from least to most.
+//
+// Item 12 will pick rows by what the element is (text or container). When it does, this
+// stays the second axis: a level names a row set per kind of element rather than one list.
+const LEVELS = [
+  { name: "compact", rows: [ROW.element, ROW.size, ROW.font] },
+  {
+    name: "default",
+    rows: [ROW.element, ROW.font, ROW.size, ROW.lineHeight, ROW.letterSpacing, ROW.color, ROW.background],
+  },
+  {
+    name: "full",
+    rows: [
+      ROW.element, ROW.font, ROW.size, ROW.lineHeight, ROW.letterSpacing, ROW.color, ROW.background,
+      ROW.fontStyle, ROW.textTransform, ROW.decoration, ROW.textAlign, ROW.wordSpacing, ROW.whiteSpace,
+      ROW.box,
+    ],
+  },
 ];
 
-// Alt+C copies what the tooltip is showing. Handled here rather than through the commands
-// API, which fires in the service worker and has no idea where the pointer is.
+// Where the level lives. Stored like the on/off state, so it holds across tabs and
+// restarts; the name rather than the index, so reordering LEVELS cannot silently change
+// what a stored value means.
+const LEVEL_KEY = "level";
+const DEFAULT_LEVEL = "default";
+
+let level = LEVELS.find((l) => l.name === DEFAULT_LEVEL);
+
+// Alt+C copies what the tooltip is showing, Alt+D moves to the next level. Handled here
+// rather than through the commands API, which fires in the service worker and has no idea
+// where the pointer is.
 const COPY_KEY = "KeyC";
+const LEVEL_KEY_CODE = "KeyD";
 
 // How long the "copied" confirmation stays up.
 const COPIED_DELAY = 1200;
@@ -109,7 +153,8 @@ const TOOLTIP_CSS = `
 `;
 
 let tooltip = null; // the container element, created lazily on first use
-let fields = null; // one { value, swatch } per ROWS entry, same order
+let fields = null; // one { value, swatch } per row of the current level, same order
+let rowsEl = null; // the container the rows live in, emptied and refilled on level change
 let note = null; // the "copied" line, empty and hidden unless something was just copied
 let noteTimer = null; // how long that line stays up
 
@@ -163,9 +208,30 @@ function createTooltip() {
 
   tooltip = document.createElement("div");
   tooltip.className = "tooltip";
+
+  // The rows live in their own container so changing level can replace all of them
+  // without disturbing the note, which stays the last line.
+  rowsEl = document.createElement("div");
+  tooltip.appendChild(rowsEl);
+
+  note = document.createElement("div");
+  note.className = "note";
+  tooltip.appendChild(note);
+
+  buildRows();
+
+  shadow.appendChild(tooltip);
+  document.body.appendChild(host);
+}
+
+// Build one element per row of the current level. Called when the tooltip is created and
+// again whenever the level changes — never per element, which is what item 2's work
+// depends on.
+function buildRows() {
+  rowsEl.textContent = "";
   fields = [];
 
-  for (const { label, swatch } of ROWS) {
+  for (const { label, swatch } of level.rows) {
     const row = document.createElement("div");
     row.className = "row";
 
@@ -184,16 +250,9 @@ function createTooltip() {
     const valueEl = document.createElement("span");
     row.appendChild(valueEl);
 
-    tooltip.appendChild(row);
+    rowsEl.appendChild(row);
     fields.push({ value: valueEl, swatch: swatchEl });
   }
-
-  note = document.createElement("div");
-  note.className = "note";
-  tooltip.appendChild(note);
-
-  shadow.appendChild(tooltip);
-  document.body.appendChild(host);
 }
 
 // getComputedStyle always reports colours as rgb()/rgba(). Hex is shorter and is what
@@ -221,7 +280,7 @@ function formatColor(value) {
 function updateContent(target) {
   const style = window.getComputedStyle(target);
 
-  ROWS.forEach((row, i) => {
+  level.rows.forEach((row, i) => {
     const field = fields[i];
     const raw = row.get(style, target);
 
@@ -230,14 +289,15 @@ function updateContent(target) {
   });
 }
 
-// Build the CSS block that gets copied. Driven by the same ROWS array the tooltip is, so
-// whatever is on screen is what lands on the clipboard, and neither can drift from the
-// other. Colours go in as hex, for the same reason the tooltip shows them that way.
+// Build the CSS block that gets copied. Driven by the same rows the tooltip is showing,
+// so what is on screen is what lands on the clipboard and neither can drift from the
+// other — which also makes the level a filter on the copy. Colours go in as hex, for the
+// same reason the tooltip shows them that way.
 function buildCss(target) {
   const style = window.getComputedStyle(target);
   const lines = [];
 
-  for (const row of ROWS) {
+  for (const row of level.rows) {
     if (!row.css) continue;
 
     for (const property of row.css) {
@@ -346,7 +406,19 @@ function hideTooltip() {
 // Match on e.code for the same reason item 1 did: on macOS, Option+C reports e.key "ç".
 document.addEventListener("keydown", async (e) => {
   if (!enabled || !visible || !shownTarget) return;
-  if (!e.altKey || e.ctrlKey || e.metaKey || e.code !== COPY_KEY) return;
+  if (!e.altKey || e.ctrlKey || e.metaKey) return;
+
+  // Alt+D moves to the next level. Write only, like the toggle: the storage listener
+  // below applies it, here and in every other tab.
+  if (e.code === LEVEL_KEY_CODE) {
+    e.preventDefault();
+
+    const next = LEVELS[(LEVELS.indexOf(level) + 1) % LEVELS.length];
+    chrome.storage.local.set({ [LEVEL_KEY]: next.name });
+    return;
+  }
+
+  if (e.code !== COPY_KEY) return;
 
   // Without this, Option+C types "ç" into whatever field has focus.
   e.preventDefault();
@@ -397,16 +469,37 @@ document.addEventListener("scroll", hideTooltip, { capture: true, passive: true 
 // ever applies on a fresh profile: once the shortcut has been pressed even once, the
 // stored value wins from then on. background.js reads the same default, so keep the two
 // in sync.
-chrome.storage.local.get({ [STORAGE_KEY]: true }, (stored) => {
+chrome.storage.local.get({ [STORAGE_KEY]: true, [LEVEL_KEY]: DEFAULT_LEVEL }, (stored) => {
   enabled = stored[STORAGE_KEY];
+  applyLevel(stored[LEVEL_KEY]);
 });
+
+// A stored name that no longer exists in LEVELS (renamed, removed) falls back to the
+// default rather than leaving the tooltip with no rows at all.
+function applyLevel(name) {
+  level = LEVELS.find((l) => l.name === name) || LEVELS.find((l) => l.name === DEFAULT_LEVEL);
+  if (tooltip) buildRows();
+}
 
 // The only path into the state. The toggle shortcut is handled in background.js, which
 // just writes to storage; this listener then flips the inspector here and in every other
 // open tab, so no tab keeps a stale copy of its own.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "local" || !changes[STORAGE_KEY]) return;
+  if (area !== "local") return;
 
-  enabled = changes[STORAGE_KEY].newValue;
-  if (!enabled) hideTooltip();
+  if (changes[LEVEL_KEY]) {
+    applyLevel(changes[LEVEL_KEY].newValue);
+
+    // The rows are new and empty, so refill them and say which level this is — otherwise
+    // the switch looks like the tooltip briefly losing its values.
+    if (visible && shownTarget) {
+      updateContent(shownTarget);
+      showNote(level.name);
+    }
+  }
+
+  if (changes[STORAGE_KEY]) {
+    enabled = changes[STORAGE_KEY].newValue;
+    if (!enabled) hideTooltip();
+  }
 });
