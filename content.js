@@ -183,8 +183,12 @@ const HINT_CSS = `
     transition: opacity 0.2s;
   }
 
+  /* Only while it is up does it take the mouse, so that hovering can hold it open. Once
+     faded it goes back to being invisible to the pointer, and the corner of the page
+     underneath is clickable again. */
   .hint.visible {
     opacity: 1;
+    pointer-events: auto;
   }
 
   .title {
@@ -328,17 +332,25 @@ async function createHint() {
     hint.appendChild(row);
   }
 
+  // Reading it should not be a race: the pointer resting on the panel holds it open, and
+  // the five seconds start again from when the pointer leaves.
+  hint.addEventListener("mouseenter", () => clearTimeout(hintTimer));
+  hint.addEventListener("mouseleave", startHintTimer);
+
   shadow.appendChild(hint);
   document.body.appendChild(host);
+}
+
+function startHintTimer() {
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => hint.classList.remove("visible"), HINT_DELAY);
 }
 
 async function showHint() {
   if (!hint) await createHint();
 
-  clearTimeout(hintTimer);
   hint.classList.add("visible");
-
-  hintTimer = setTimeout(() => hint.classList.remove("visible"), HINT_DELAY);
+  startHintTimer();
 }
 
 // Build one element per row of the current level. Called when the tooltip is created and
