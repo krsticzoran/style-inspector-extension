@@ -94,6 +94,10 @@ const LEVEL_KEY_CODE = "KeyD";
 // How long the "copied" confirmation stays up.
 const COPIED_DELAY = 1200;
 
+// How long the shortcut hint stays up after the inspector is switched on. Longer than the
+// note line, because this one is read rather than glanced at.
+const HINT_DELAY = 5000;
+
 // The tooltip's styles. They live here rather than in a manifest stylesheet because a
 // manifest stylesheet applies to the page, and the tooltip lives in a shadow root the
 // page's CSS cannot reach — which also means nothing from outside can reach it either.
@@ -151,6 +155,52 @@ const TOOLTIP_CSS = `
     border: 1px solid rgba(255, 255, 255, 0.3);
   }
 `;
+
+// The shortcut hint. Its own host and shadow root rather than a corner of the tooltip's:
+// it is a second surface with its own position and lifetime, and the two are never on
+// screen for the same reason.
+const HINT_CSS = `
+  :host {
+    all: initial;
+  }
+
+  .hint {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 2147483647;
+    box-sizing: content-box;
+    background: #1e1e1e;
+    color: #eee;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 12px;
+    line-height: 1.6;
+    padding: 10px 12px;
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .hint.visible {
+    opacity: 1;
+  }
+
+  .title {
+    color: #4f9dff;
+    margin-bottom: 4px;
+  }
+
+  .key {
+    color: #9aa0a6;
+    display: inline-block;
+    width: 44px;
+  }
+`;
+
+let hint = null; // the shortcut panel, created lazily the first time it is needed
+let hintTimer = null;
 
 let tooltip = null; // the container element, created lazily on first use
 let fields = null; // one { value, swatch } per row of the current level, same order
@@ -222,6 +272,73 @@ function createTooltip() {
 
   shadow.appendChild(tooltip);
   document.body.appendChild(host);
+}
+
+// How the modifier is written where the user can see it. Chrome's own UI uses the symbol
+// on macOS and the word everywhere else.
+const ALT = navigator.userAgent.includes("Mac") ? "⌥" : "Alt+";
+
+// Ask the service worker what the toggle is bound to. chrome.commands is not available to
+// content scripts, and the answer is whatever the user set at chrome://extensions/shortcuts,
+// so it cannot be hardcoded either. An unassigned or unreachable command leaves the row out.
+function toggleShortcut() {
+  return chrome.runtime.sendMessage({ type: "toggle-shortcut" }).catch(() => null);
+}
+
+// The panel that names the shortcuts, shown when the inspector is switched on. Built once,
+// then reused: it has nothing that changes per page.
+async function createHint() {
+  const shortcut = await toggleShortcut();
+
+  const host = document.createElement("style-inspector-hint");
+  const shadow = host.attachShadow({ mode: "open" });
+
+  const style = document.createElement("style");
+  style.textContent = HINT_CSS;
+  shadow.appendChild(style);
+
+  hint = document.createElement("div");
+  hint.className = "hint";
+
+  const title = document.createElement("div");
+  title.className = "title";
+  title.textContent = "Style Inspector on";
+  hint.appendChild(title);
+
+  const keys = [
+    [shortcut, "turn off"],
+    [`${ALT}C`, "copy styles"],
+    [`${ALT}D`, "detail level"],
+  ];
+
+  for (const [key, what] of keys) {
+    if (!key) continue; // the toggle can be left unassigned by Chrome
+
+    const row = document.createElement("div");
+
+    const keyEl = document.createElement("span");
+    keyEl.className = "key";
+    keyEl.textContent = key;
+    row.appendChild(keyEl);
+
+    const whatEl = document.createElement("span");
+    whatEl.textContent = what;
+    row.appendChild(whatEl);
+
+    hint.appendChild(row);
+  }
+
+  shadow.appendChild(hint);
+  document.body.appendChild(host);
+}
+
+async function showHint() {
+  if (!hint) await createHint();
+
+  clearTimeout(hintTimer);
+  hint.classList.add("visible");
+
+  hintTimer = setTimeout(() => hint.classList.remove("visible"), HINT_DELAY);
 }
 
 // Build one element per row of the current level. Called when the tooltip is created and
@@ -500,6 +617,10 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
   if (changes[STORAGE_KEY]) {
     enabled = changes[STORAGE_KEY].newValue;
-    if (!enabled) hideTooltip();
+
+    // Only on the switch, never on page load: the keys are worth naming when the user has
+    // just asked for the inspector, not on every page of a browsing session.
+    if (enabled) showHint();
+    else hideTooltip();
   }
 });

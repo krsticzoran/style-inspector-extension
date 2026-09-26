@@ -31,6 +31,19 @@ chrome.storage.onChanged.addListener((changes, area) => {
   paintBadge(changes[STORAGE_KEY].newValue);
 });
 
+// Content scripts cannot reach chrome.commands, so they ask for the toggle's current
+// binding through here — it is whatever the user last set at chrome://extensions/shortcuts.
+chrome.runtime.onMessage.addListener((message, sender, respond) => {
+  if (message?.type !== "toggle-shortcut") return;
+
+  chrome.commands.getAll().then((commands) => {
+    const command = commands.find((c) => c.name === "toggle-inspector");
+    respond(command?.shortcut || null); // empty string when Chrome could not assign it
+  });
+
+  return true; // the reply is async
+});
+
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "toggle-inspector") return;
 

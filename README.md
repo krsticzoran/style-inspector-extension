@@ -48,6 +48,9 @@ deliberate limit: a tooltip drawn inside a frame would be clipped at its edges.
 remembered: it applies to every tab at once and survives reloads and restarts, so it is
 pressed once when you are done inspecting and once when you start again.
 
+Switching the inspector on shows a panel in the bottom-right corner naming the shortcuts;
+it fades after five seconds.
+
 `Alt + D` (`Option + D`) cycles how much the tooltip shows: **compact** (tag, size, font),
 **default**, and **full** (adds text-transform, alignment, decoration, word-spacing,
 white-space and the element's size). The level flashes in the tooltip, applies to every
