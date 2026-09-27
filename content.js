@@ -90,6 +90,15 @@ let level = LEVELS.find((l) => l.name === DEFAULT_LEVEL);
 // where the pointer is.
 const COPY_KEY = "KeyC";
 const LEVEL_KEY_CODE = "KeyD";
+const HINT_KEY_CODE = "KeyH";
+
+// Whether the shortcut panel is wanted at all. Stored next to the other state rather than
+// in localStorage, which a content script sees per site — this is one setting for the
+// extension, the same in every tab.
+const HINT_KEY = "hint";
+const DEFAULT_HINT = true;
+
+let hintEnabled = DEFAULT_HINT;
 
 // How long the "copied" confirmation stays up.
 const COPIED_DELAY = 1200;
@@ -313,6 +322,7 @@ async function createHint() {
     [shortcut, "turn off"],
     [`${ALT}C`, "copy styles"],
     [`${ALT}D`, "detail level"],
+    [`${ALT}H`, "hide this"],
   ];
 
   for (const [key, what] of keys) {
@@ -347,6 +357,7 @@ function startHintTimer() {
 }
 
 async function showHint() {
+  if (!hintEnabled) return;
   if (!hint) await createHint();
 
   hint.classList.add("visible");
@@ -534,8 +545,20 @@ function hideTooltip() {
 // user gesture the clipboard API requires, so no permission is needed.
 // Match on e.code for the same reason item 1 did: on macOS, Option+C reports e.key "ç".
 document.addEventListener("keydown", async (e) => {
-  if (!enabled || !visible || !shownTarget) return;
+  if (!enabled) return;
   if (!e.altKey || e.ctrlKey || e.metaKey) return;
+
+  // Alt+H switches the panel off, and back on. Deliberately not gated on the tooltip
+  // being up: the moment the user wants to turn the panel off is while they are looking
+  // at it, with the pointer nowhere near any text.
+  if (e.code === HINT_KEY_CODE) {
+    e.preventDefault();
+    chrome.storage.local.set({ [HINT_KEY]: !hintEnabled });
+    return;
+  }
+
+  // The rest describe the element the tooltip is showing, so they need one.
+  if (!visible || !shownTarget) return;
 
   // Alt+D moves to the next level. Write only, like the toggle: the storage listener
   // below applies it, here and in every other tab.
@@ -598,10 +621,14 @@ document.addEventListener("scroll", hideTooltip, { capture: true, passive: true 
 // ever applies on a fresh profile: once the shortcut has been pressed even once, the
 // stored value wins from then on. background.js reads the same default, so keep the two
 // in sync.
-chrome.storage.local.get({ [STORAGE_KEY]: true, [LEVEL_KEY]: DEFAULT_LEVEL }, (stored) => {
-  enabled = stored[STORAGE_KEY];
-  applyLevel(stored[LEVEL_KEY]);
-});
+chrome.storage.local.get(
+  { [STORAGE_KEY]: true, [LEVEL_KEY]: DEFAULT_LEVEL, [HINT_KEY]: DEFAULT_HINT },
+  (stored) => {
+    enabled = stored[STORAGE_KEY];
+    hintEnabled = stored[HINT_KEY];
+    applyLevel(stored[LEVEL_KEY]);
+  }
+);
 
 // A stored name that no longer exists in LEVELS (renamed, removed) falls back to the
 // default rather than leaving the tooltip with no rows at all.
@@ -625,6 +652,16 @@ chrome.storage.onChanged.addListener((changes, area) => {
       updateContent(shownTarget);
       showNote(level.name);
     }
+  }
+
+  if (changes[HINT_KEY]) {
+    hintEnabled = changes[HINT_KEY].newValue;
+
+    // Turning it back on shows it once, which is both the confirmation and the reminder
+    // of what the keys are. Turning it off takes it off the screen now, not in five
+    // seconds — the user has just said they do not want to look at it.
+    if (hintEnabled) showHint();
+    else if (hint) hint.classList.remove("visible");
   }
 
   if (changes[STORAGE_KEY]) {

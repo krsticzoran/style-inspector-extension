@@ -49,7 +49,8 @@ remembered: it applies to every tab at once and survives reloads and restarts, s
 pressed once when you are done inspecting and once when you start again.
 
 Switching the inspector on shows a panel in the bottom-right corner naming the shortcuts;
-it fades after five seconds.
+it fades after five seconds, and holds while the pointer rests on it. `Alt + H`
+(`Option + H`) turns that panel off once the keys are familiar, and back on.
 
 `Alt + D` (`Option + D`) cycles how much the tooltip shows: **compact** (tag, size, font),
 **default**, and **full** (adds text-transform, alignment, decoration, word-spacing,
